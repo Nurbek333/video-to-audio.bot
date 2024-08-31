@@ -16,20 +16,104 @@ from filters.admin import IsBotAdminFilter
 from filters.check_sub_channel import IsCheckSubChannels
 from states.reklama import Adverts
 from keyboard_buttons import admin_keyboard
-from gtts import gTTS
+from moviepy.editor import VideoFileClip
 import os
-from buttons import savol_button
-from filters.admin import IsBotAdminFilter
-from aiogram import types
+import aiohttp
 import logging
 from aiogram.types import CallbackQuery, ContentType
 from filters.admin import IsBotAdminFilter,AdminStates
 
+# Konfiguratsiya
 ADMINS = config.ADMINS
 TOKEN = config.BOT_TOKEN
 CHANNELS = config.CHANNELS
+MAX_VIDEO_SIZE_MB = 50  # Maksimal video hajmi (MB)
+MAX_VIDEO_DURATION = 420  # Maksimal video davomiyligi (soniya)
 
+logging.basicConfig(level=logging.INFO)
 dp = Dispatcher(storage=MemoryStorage())
+
+@dp.message(F.content_type == 'video')
+async def handle_video(message: types.Message):
+    video = message.video
+    file_size_mb = video.file_size / (1024 * 1024)  # MB
+
+    if file_size_mb > MAX_VIDEO_SIZE_MB:
+        await message.reply("⚠️ Video faylning hajmi juda katta. Iltimos, kichikroq video yuboring.")
+        return
+
+    # Ensure the downloads directory exists
+    if not os.path.exists('downloads'):
+        os.makedirs('downloads')
+
+    # Get the file path
+    file = await bot.get_file(video.file_id)
+    file_path = file.file_path
+    video_url = f"https://api.telegram.org/file/bot{TOKEN}/{file_path}"
+
+    # Download the video file
+    async with aiohttp.ClientSession() as session:
+        async with session.get(video_url) as response:
+            if response.status == 200:
+                video_path = f"downloads/{video.file_id}.mp4"
+                with open(video_path, 'wb') as f:
+                    f.write(await response.read())
+            else:
+                await message.reply("❌ Video faylini yuklab olishda xatolik yuz berdi.")
+                return
+
+    # Check video duration and trim if necessary
+    video_clip = VideoFileClip(video_path)
+    if video_clip.duration > MAX_VIDEO_DURATION:
+        # Trim the video to MAX_VIDEO_DURATION
+        trimmed_video_path = f"downloads/{video.file_id}_trimmed.mp4"
+        trimmed_video_clip = video_clip.subclip(0, MAX_VIDEO_DURATION)
+        trimmed_video_clip.write_videofile(trimmed_video_path, codec="libx264")
+        video_clip.close()
+        video_path = trimmed_video_path
+    else:
+        video_clip.close()
+
+    # Add delay for processing
+    initial_message = await message.reply("📥 Video yuklandi! Konvertatsiya jarayonini kuting...")
+    for i in range(3, 0, -1):
+        # Send countdown message
+        countdown_message = await message.reply(f"⏳ {i} sekunddan so'ng konvertatsiya boshlanadi...")
+        
+        # Wait 1 second
+        await asyncio.sleep(1)
+        
+        # Delete the previous countdown message
+        await countdown_message.delete()
+    
+    # Delete the initial message
+    await initial_message.delete()
+
+    # Convert video to audio using moviepy
+    audio_path = f"downloads/{video.file_id}.mp3"
+    
+    try:
+        video_clip = VideoFileClip(video_path)
+        video_clip.audio.write_audiofile(audio_path)
+        video_clip.close()
+    except Exception as e:
+        logging.error(f"Error converting video to audio: {e}")
+        await message.reply("❌ Audio konvertatsiyasida xatolik yuz berdi. Iltimos, boshqa video yuboring.")
+        return
+
+    # Send the audio file back to the user
+    audio = FSInputFile(audio_path)
+    await message.reply_audio(audio=audio, caption="🎵 Mana, video audiyo formatda!")
+
+    # Clean up files
+    try:
+        os.remove(video_path)
+        os.remove(audio_path)
+    except Exception as e:
+        logging.error(f"Error cleaning up files: {e}")
+
+
+
 
 @dp.message(CommandStart())
 async def start_command(message: Message):
@@ -37,40 +121,45 @@ async def start_command(message: Message):
     telegram_id = message.from_user.id
     try:
         db.add_user(full_name=full_name, telegram_id=telegram_id)  # Add user to the database
-        await message.answer(text="""<b>👋 Assalomu alaykum!</b>
+        await message.answer(
+            text="""<b>Salom! 🎉</b> 
 
-<b>Men SifatDev IT Akademiyasi tomonidan yaratilgan [Bot nomi] botiman.</b>
+<b>Men [Bot nomi] botiman.</b> Sizga quyidagi funksiyalarni taqdim etaman:
 
-<b>Botning funksiyalari:</b>
-1. <b>/about</b> - Bot haqida to'liq ma'lumot va yaratuvchilar haqida.
-2. <b>/help</b> - Botning ishlash tartibi va yordam haqida xabar.
+<b>/help</b> - Bot qanday ishlashini tushuntiruvchi yordam. 🤔
+<b>/about</b> - Bot haqidagi ma'lumot va yaratuvchilar haqida. 🛠️
 
 <b>Qanday foydalanish kerak:</b>
-- Ovozli xabarlarni olish uchun matn yuboring va bot sizga ovozli xabar yuboradi.
+Video yuboring va men uni ovozli xabarga aylantiraman. 🎥➡️🎤
 
-<b>Qo'shimcha savollar yoki takliflar uchun:</b>
-- <b>⚙️ Savol yoki takliflar tugmasini bosing va admin bilan bog'laning.</b>
+<b>Agar qo'shimcha savollar yoki yordam kerak bo'lsa:</b>
+<b>⚙️ Savollar yoki takliflar uchun</b> <b>⚙️ Savol yoki takliflar</b> tugmasini bosing va admin bilan bog'laning.
 
-<b>Botni ishlatganingiz uchun rahmat! 🎉</b>
-""", parse_mode='html', reply_markup=savol_button)
+<b>Bot SifatDev IT Akademiyasi tomonidan yaratilgan.</b> 🌟
+
+<b>Botni ishlatganingiz uchun rahmat!</b> 🎉""",
+            parse_mode="html"
+        )
     except Exception as e:
-        # logging.exception("Foydalanuvchini qo'shishda xatolik yuz berdi", e)
-        await message.answer(text="""<b>👋 Assalomu alaykum!</b>
+        await message.answer(
+            text="""<b>Salom! 🎉</b> 
 
-<b>Men SifatDev IT Akademiyasi tomonidan yaratilgan [Bot nomi] botiman.</b>
+<b>Men [Bot nomi] botiman.</b> Sizga quyidagi funksiyalarni taqdim etaman:
 
-<b>Botning funksiyalari:</b>
-1. <b>/about</b> - Bot haqida to'liq ma'lumot va yaratuvchilar haqida.
-2. <b>/help</b> - Botning ishlash tartibi va yordam haqida xabar.
+<b>/help</b> - Bot qanday ishlashini tushuntiruvchi yordam. 🤔
+<b>/about</b> - Bot haqidagi ma'lumot va yaratuvchilar haqida. 🛠️
 
 <b>Qanday foydalanish kerak:</b>
-- Ovozli xabarlarni olish uchun matn yuboring va bot sizga ovozli xabar yuboradi.
+Video yuboring va men uni ovozli xabarga aylantiraman. 🎥➡️🎤
 
-<b>Qo'shimcha savollar yoki takliflar uchun:</b>
-- <b>⚙️ Savol yoki takliflar tugmasini bosing va admin bilan bog'laning.</b>
+<b>Agar qo'shimcha savollar yoki yordam kerak bo'lsa:</b>
+<b>⚙️ Savollar yoki takliflar uchun</b> <b>⚙️ Savol yoki takliflar</b> tugmasini bosing va admin bilan bog'laning.
 
-<b>Botni ishlatganingiz uchun rahmat! 🎉</b>
-""", parse_mode='html', reply_markup=savol_button)
+<b>Bot SifatDev IT Akademiyasi tomonidan yaratilgan.</b> 🌟
+
+<b>Botni ishlatganingiz uchun rahmat!</b> 🎉""",
+            parse_mode="html"
+        )
 
 @dp.message(IsCheckSubChannels())
 async def kanalga_obuna(message: Message):
@@ -85,84 +174,44 @@ async def kanalga_obuna(message: Message):
 
 @dp.message(Command("help"))
 async def help_commands(message: Message):
-    await message.answer("""<b>👋 Salom!</b>
+    await message.answer("""<b>👋 Salom!</b> Men [Bot nomi] botiman. Sizga quyidagi funksiyalarni taqdim etaman:
 
-<b>Men SifatDev IT Akademiyasi tomonidan yaratilgan [Bot nomi] botiman. Quyidagi funksiyalarni taqdim etaman:</b>
+<b>1. /start</b> - Botni ishga tushiradi va siz bilan salomlashadi. 🤖
+<b>2. /help</b> - Botning qanday ishlashini tushuntiruvchi yordam. 📚
+<b>3. /about</b> - Bot yaratuvchilari va bot haqidagi to'liq ma'lumotlar. 🛠️
 
-1. <b>/start</b> - Botni ishga tushiradi va siz bilan salomlashadi.
-2. <b>/help</b> - Botning qanday ishlashini tushuntiruvchi yordam xabari.
-3. <b>/about</b> - Bot haqidagi to'liq ma'lumot va yaratuvchilar haqida.
+<b>📌 Qanday foydalanish kerak:</b>
+- Video yuboring va men uni ovozli faylga aylantiraman. 🎥➡️🎤
 
-<b>Qanday foydalanish kerak:</b>
-- Ovozli xabarlarni olish uchun matn yuboring va bot sizga ovozli xabar yuboradi.
+<b>Agar qo'shimcha yordam kerak bo'lsa:</b>
+- <b>⚙️ Savollar yoki takliflar uchun</b> savol yoki takliflar tugmasini bosing va admin bilan bog'laning.
 
-<b>Qo'shimcha savollar yoki takliflar uchun:</b>
-- <b>⚙️ Savol yoki takliflar tugmasini bosing va admin bilan bog'laning.</b>
+<b>Bot SifatDev IT Akademiyasiga tegishli. 🌟</b>
 
-<b>Agar qo'shimcha yordam kerak bo'lsa, iltimos, biz bilan bog'laning!</b>
-
-<b>Botni ishlatganingiz uchun rahmat! 🎉</b>
-""", parse_mode='html')
+<b>Rahmat, [Bot nomi]!</b>""", parse_mode="html")
 
 @dp.message(Command("about"))
 async def about_commands(message: Message):
-    await message.answer(
-        """<b>📢 Bot Haqida Ma'lumot</b>
+    await message.answer("""<b>📢 /about - Bot Haqida Ma'lumot</b>
 
-<b>👋 Salom!</b>
-
-<b>Men SifatDev IT Akademiyasi tomonidan yaratilgan [Bot nomi] botiman. Quyidagi ma'lumotlarni taqdim etaman:</b>
+<b>👋 Salom! Men [Bot nomi] botiman.</b>
 
 <b>Bot Yaratuvchilari:</b>
-<b>Yaratuvchi:</b> Nurbek Uktamov\n
-<b>Tajriba:</b> Backend dasturchi, Django bo'yicha mutaxassis
-<b>Maqsad:</b> Sizga matnni ovozga aylantirish va boshqa funksiyalarni taqdim etish.
+- <b>Yaratuvchi:</b> Nurbek Uktamov
+- <b>Tajriba:</b> Backend dasturchi, Django bo'yicha mutaxassis
+- <b>Maqsad:</b> Ushbu bot sizga matnni ovozga aylantirish va boshqa funktsiyalarni taqdim etish uchun yaratilgan.
 
 <b>Bot Haqida:</b>
-<b>Maqsad:</b> [Bot nomi] bot sizning matnlaringizni ovozli xabarlarga aylantiradi. Har qanday matnni yuborganingizda, bot uni ovozga aylantiradi va sizga ovozli xabar sifatida yuboradi.\n
-<b>Texnologiyalar:</b> Bot Python dasturlash tili yordamida yaratildi va <b>aiogram</b> kutubxonasi, <b>gTTS</b> (Google Text-to-Speech) kabi texnologiyalarni ishlatadi.\n
-<b>Qanday Ishlaydi:</b> Siz matn yuborganingizda, bot uni ovozga aylantiradi va ovozli xabar sifatida qaytaradi.
+- <b>Maqsad:</b> [Bot nomi] bot sizning matnlaringizni ovozli xabarlarga aylantiradi. Har qanday matnni yuboring va men uni sizga ovozli xabar sifatida qaytaraman.
+- <b>Texnologiyalar:</b> Bot Python dasturlash tili yordamida yaratildi va <b>aiogram</b> kutubxonasi, <b>gTTS</b> (Google Text-to-Speech) kabi texnologiyalarni ishlatadi.
+- <b>Qanday Ishlaydi:</b> Siz matn yuborganingizda, bot uni ovozga aylantiradi va ovozli xabar sifatida yuboradi.
 
-<b>Qo'shimcha Ma'lumot yoki Yordam Kerak Bo'lsa:</b>
-<b>⚙️ Savollar yoki takliflar uchun ⚙️ Savol yoki takliflar tugmasini bosing va admin bilan bog'laning.</b>
+<b>Agar Qo'shimcha Ma'lumot yoki Yordam Kerak Bo'lsa:</b>
+- <b>Kontakt:</b> <b>nurbekuktamov@gmail.com 📧</b>
+- <b>Websayt:</b> <b>nurbek333.pythonanywhere.com 🌐</b>
 
-<b>Botni ishlatganingiz uchun rahmat! 🎉</b>""",
-        parse_mode="html"
-    )
-
-
-@dp.message(Command("admin"), IsBotAdminFilter(ADMINS))
-async def is_admin(message: Message):
-    await message.answer(text="Admin menu", reply_markup=admin_keyboard.admin_button)
-
-@dp.message(F.text == "Foydalanuvchilar soni", IsBotAdminFilter(ADMINS))
-async def users_count(message: Message):
-    counts = db.count_users()
-    text = f"Botimizda {counts[0]} ta foydalanuvchi bor"
-    await message.answer(text=text, parse_mode=ParseMode.HTML)
-
-@dp.message(F.text == "Reklama yuborish", IsBotAdminFilter(ADMINS))
-async def advert_dp(message: Message, state: FSMContext):
-    await state.set_state(Adverts.adverts)
-    await message.answer(text="Reklama yuborishingiz mumkin!", parse_mode=ParseMode.HTML)
-
-@dp.message(Adverts.adverts)
-async def send_advert(message: Message, state: FSMContext):
-    message_id = message.message_id
-    from_chat_id = message.from_user.id
-    users = db.all_users_id()
-    count = 0
-    for user in users:
-        try:
-            await bot.copy_message(chat_id=user[0], from_chat_id=from_chat_id, message_id=message_id)
-            count += 1
-        except Exception as e:
-            logging.exception(f"Foydalanuvchiga reklama yuborishda xatolik: {user[0]}", e)
-        time.sleep(0.01)
+<b>Rahmat va botni ishlatganingiz uchun rahmat!</b> 🎉""", parse_mode='html')
     
-    await message.answer(f"Reklama {count} ta foydalanuvchiga yuborildi", parse_mode=ParseMode.HTML)
-    await state.clear()
-
 
 @dp.message(lambda message: message.text == '✉️ Savollar va takliflar')
 async def handle_savol_takliflar(message: Message, state: FSMContext):
@@ -284,21 +333,37 @@ async def handle_admin_message(message: types.Message, state: FSMContext):
     )
 
 
-@dp.message(F.text)
-async def convert_text_to_speech(message: types.Message):
-    text = message.text
-    tts = gTTS(text=text, lang='en')
-    file_path = 'output.mp3'
-    tts.save(file_path)
+@dp.message(Command("admin"), IsBotAdminFilter(ADMINS))
+async def is_admin(message: Message):
+    await message.answer(text="Admin menu", reply_markup=admin_keyboard.admin_button)
 
-    with open(file_path, 'rb') as audio:
-        await message.reply_voice(
-            voice=FSInputFile(file_path, filename="tts.mp3"),
-            caption="<b>🎵 Ovozli xabar:</b>\nMatn quyidagi ovozli xabarga aylantirildi.",
-        parse_mode='html')
+@dp.message(F.text == "Foydalanuvchilar soni", IsBotAdminFilter(ADMINS))
+async def users_count(message: Message):
+    counts = db.count_users()
+    text = f"Botimizda {counts[0]} ta foydalanuvchi bor"
+    await message.answer(text=text, parse_mode=ParseMode.HTML)
 
-    os.remove(file_path)
+@dp.message(F.text == "Reklama yuborish", IsBotAdminFilter(ADMINS))
+async def advert_dp(message: Message, state: FSMContext):
+    await state.set_state(Adverts.adverts)
+    await message.answer(text="Reklama yuborishingiz mumkin!", parse_mode=ParseMode.HTML)
 
+@dp.message(Adverts.adverts)
+async def send_advert(message: Message, state: FSMContext):
+    message_id = message.message_id
+    from_chat_id = message.from_user.id
+    users = db.all_users_id()
+    count = 0
+    for user in users:
+        try:
+            await bot.copy_message(chat_id=user[0], from_chat_id=from_chat_id, message_id=message_id)
+            count += 1
+        except Exception as e:
+            logging.exception(f"Foydalanuvchiga reklama yuborishda xatolik: {user[0]}", e)
+        time.sleep(0.01)
+    
+    await message.answer(f"Reklama {count} ta foydalanuvchiga yuborildi", parse_mode=ParseMode.HTML)
+    await state.clear()
 
 @dp.startup()
 async def on_startup_notify(bot: Bot):
@@ -328,7 +393,6 @@ async def off_startup_notify(bot: Bot):
             )
         except Exception as err:
             logging.exception(f"Admin {admin} uchun xabar yuborishda xatolik yuz berdi: {err}")
-
 
 def setup_middlewares(dispatcher: Dispatcher, bot: Bot) -> None:
     from middlewares.throttling import ThrottlingMiddleware
