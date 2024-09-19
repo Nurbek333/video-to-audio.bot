@@ -22,6 +22,7 @@ import aiohttp
 import logging
 from aiogram.types import CallbackQuery, ContentType
 from filters.admin import IsBotAdminFilter,AdminStates
+from aiogram.fsm.state import State, StatesGroup
 
 # Konfiguratsiya
 ADMINS = config.ADMINS
@@ -213,6 +214,38 @@ async def about_commands(message: Message):
 <b>Rahmat va botni ishlatganingiz uchun rahmat!</b> 🎉""", parse_mode='html')
     
 
+
+# Define the states for admin functionality
+class AdminStates(StatesGroup):
+    waiting_for_admin_message = State()
+    waiting_for_reply_message = State()
+
+
+class AdminStates(StatesGroup):
+    waiting_for_admin_message = State()
+    waiting_for_reply_message = State()
+
+
+# Initialize logger
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Define admin states
+class AdminStates(StatesGroup):
+    waiting_for_admin_message = State()
+    waiting_for_reply_message = State()
+
+# Function to create inline keyboard for reply
+def create_inline_keyboard(user_id):
+    keyboard_builder = InlineKeyboardBuilder()
+    keyboard_builder.button(
+        text="Javob berish",
+        callback_data=f"reply:{user_id}"
+    )
+
+
+    return keyboard_builder.as_markup()
+
 @dp.message(lambda message: message.text == '✉️ Savollar va takliflar')
 async def handle_savol_takliflar(message: Message, state: FSMContext):
     # Foydalanuvchiga admin uchun xabar yuborish uchun taklif qiluvchi matn
@@ -225,7 +258,7 @@ async def handle_savol_takliflar(message: Message, state: FSMContext):
     )
     await state.set_state(AdminStates.waiting_for_admin_message)
 
-# Handle messages sent by the user for the admin
+# Handle different content types for the message sent to admin
 @dp.message(AdminStates.waiting_for_admin_message, F.content_type.in_([
     ContentType.TEXT, ContentType.AUDIO, ContentType.VOICE, ContentType.VIDEO,
     ContentType.PHOTO, ContentType.ANIMATION, ContentType.STICKER, 
@@ -238,79 +271,80 @@ async def handle_admin_message(message: types.Message, state: FSMContext):
     first_name = message.from_user.first_name
     last_name = message.from_user.last_name or ""
 
-    # Foydalanuvchi ma'lumotlarini identifikatsiya qilish
-    if username:
-        user_identifier = f"@{username}"
-    else:
-        user_identifier = f"{first_name} {last_name}".strip()
+    # Foydalanuvchini aniqlash (foydalanuvchi nomi yoki ismi/familiyasi)
+    user_identifier = f"@{username}" if username else f"{first_name} {last_name}".strip()
 
-    # Har bir admin uchun foydalanuvchi xabarini yuborish
-    for admin_id in config.ADMINS:
+    video_note = message.video_note
+    inline_keyboard = create_inline_keyboard(user_id)
+
+    for admin_id in ADMINS:
         try:
-            if message.video_note:
+            if video_note:
                 await bot.send_video_note(
                     admin_id,
-                    message.video_note.file_id,
+                    video_note.file_id,
+                    reply_markup=inline_keyboard
                 )
             elif message.text:
                 await bot.send_message(
                     admin_id,
-                    f"<b>Foydalanuvchi:</b> {user_identifier}\n\n"
-                    f"<b>Xabar:</b>\n{message.text}",
-                    parse_mode='html'
+                    f"👤 Foydalanuvchi: {user_identifier}\n✉️ Xabar:\n{message.text}",
+                    reply_markup=inline_keyboard
                 )
             elif message.audio:
                 await bot.send_audio(
                     admin_id,
                     message.audio.file_id,
-                    caption=f"<b>Foydalanuvchi:</b> {user_identifier}\n\n<b>Audio xabar</b>",
-                    parse_mode='html'
+                    caption=f"👤 Foydalanuvchi: {user_identifier}\n🎧 Audio xabar",
+                    reply_markup=inline_keyboard
                 )
             elif message.voice:
                 await bot.send_voice(
                     admin_id,
                     message.voice.file_id,
-                    caption=f"<b>Foydalanuvchi:</b> {user_identifier}\n\n<b>Ovozli xabar</b>",
-                    parse_mode='html'
+                    caption=f"👤 Foydalanuvchi: {user_identifier}\n🎤 Voice xabar",
+                    reply_markup=inline_keyboard
                 )
             elif message.video:
                 await bot.send_video(
                     admin_id,
                     message.video.file_id,
-                    caption=f"<b>Foydalanuvchi:</b> {user_identifier}\n\n<b>Video xabar</b>",
-                    parse_mode='html'
+                    caption=f"👤 Foydalanuvchi: {user_identifier}\n🎬 Video xabar",
+                    reply_markup=inline_keyboard
                 )
             elif message.photo:
                 await bot.send_photo(
                     admin_id,
                     message.photo[-1].file_id,
-                    caption=f"<b>Foydalanuvchi:</b> {user_identifier}\n\n<b>Rasm xabar</b>",
-                    parse_mode='html'
+                    caption=f"👤 Foydalanuvchi: {user_identifier}\n🖼️ Rasm xabar",
+                    reply_markup=inline_keyboard
                 )
             elif message.animation:
                 await bot.send_animation(
                     admin_id,
                     message.animation.file_id,
-                    caption=f"<b>Foydalanuvchi:</b> {user_identifier}\n\n<b>GIF xabar</b>",
-                    parse_mode='html'
+                    caption=f"👤 Foydalanuvchi: {user_identifier}\n🎞️ GIF xabar",
+                    reply_markup=inline_keyboard
                 )
             elif message.sticker:
                 await bot.send_sticker(
                     admin_id,
                     message.sticker.file_id,
+                    reply_markup=inline_keyboard
                 )
             elif message.location:
                 await bot.send_location(
                     admin_id,
                     latitude=message.location.latitude,
                     longitude=message.location.longitude,
+                    reply_markup=inline_keyboard
                 )
             elif message.document:
                 await bot.send_document(
                     admin_id,
                     message.document.file_id,
-                    caption=f"<b>Foydalanuvchi:</b> {user_identifier}\n\n<b>Hujjat xabar</b>",
-                    parse_mode='html'
+                    caption=f"👤 Foydalanuvchi: {user_identifier}\n📄 Hujjat xabar",
+                    reply_markup=inline_keyboard
                 )
             elif message.contact:
                 await bot.send_contact(
@@ -318,19 +352,51 @@ async def handle_admin_message(message: types.Message, state: FSMContext):
                     phone_number=message.contact.phone_number,
                     first_name=message.contact.first_name,
                     last_name=message.contact.last_name or "",
+                    reply_markup=inline_keyboard
                 )
         except Exception as e:
-            logging.error(f"Error sending message to admin {admin_id}: {e}")
+            logging.error(f"⚠️ Error sending message to admin {admin_id}: {e}")
 
-    # Foydalanuvchiga xabar yuborish
     await state.clear()
-    await bot.send_message(
-        user_id,
-        "<b>✅ Xabaringiz muvaffaqiyatli yuborildi!</b>\n\n"
-        "Admin tez orada siz bilan bog'lanadi. Sizning savolingiz yoki taklifingiz "
-        "biz uchun juda muhim. Iltimos, sabr qiling va javobni kuting.",
-        parse_mode='html'
-    )
+    await bot.send_message(user_id, "✅ Admin sizga javob berishi mumkin.")
+
+# Callback query handler for the reply button
+@dp.callback_query(lambda c: c.data.startswith('reply:'))
+async def process_reply_callback(callback_query: CallbackQuery, state: FSMContext):
+    user_id = int(callback_query.data.split(":")[1])
+    await callback_query.message.answer("📝 Javobingizni yozing. Sizning javobingiz foydalanuvchiga yuboriladi.")
+    await state.update_data(reply_user_id=user_id)
+    await state.set_state(AdminStates.waiting_for_reply_message)
+    await callback_query.answer()
+
+# Handle admin reply and send it back to the user
+@dp.message(AdminStates.waiting_for_reply_message)
+async def handle_admin_reply(message: Message, state: FSMContext):
+    data = await state.get_data()
+    original_user_id = data.get('reply_user_id')
+
+    if original_user_id:
+        try:
+            if message.text:
+                await bot.send_message(original_user_id, f"📩 Admin javobi:\n{message.text}")
+            elif message.voice:
+                await bot.send_voice(original_user_id, message.voice.file_id)
+            elif message.video_note:
+                await bot.send_video_note(original_user_id, message.video_note.file_id)
+            elif message.audio:
+                await bot.send_audio(original_user_id, message.audio.file_id)
+            elif message.sticker:
+                await bot.send_sticker(original_user_id, message.sticker.file_id)
+            elif message.video:
+                await bot.send_video(original_user_id, message.video.file_id)
+
+            await bot.send_message(ADMINS[0], "✅ Foydalanuvchiga habaringiz yuborildi!")
+            await state.clear()  # Clear state after sending the reply
+        except Exception as e:
+            logger.error(f"⚠️ Error sending reply to user {original_user_id}: {e}")
+            await message.reply("❌ Xatolik: Javob yuborishda xato yuz berdi.")
+    else:
+        await message.reply("⚠️ Xatolik: Javob yuborish uchun foydalanuvchi ID topilmadi.")
 
 
 @dp.message(Command("admin"), IsBotAdminFilter(ADMINS))
