@@ -125,7 +125,7 @@ async def start_command(message: Message):
         await message.answer(
             text="""<b>Salom! 🎉</b> 
 
-<b>Men [Bot nomi] botiman.</b> Sizga quyidagi funksiyalarni taqdim etaman:
+<b>Men Video to Audio botiman.</b> Sizga quyidagi funksiyalarni taqdim etaman:
 
 <b>/help</b> - Bot qanday ishlashini tushuntiruvchi yordam. 🤔
 <b>/about</b> - Bot haqidagi ma'lumot va yaratuvchilar haqida. 🛠️
@@ -145,7 +145,7 @@ Video yuboring va men uni ovozli xabarga aylantiraman. 🎥➡️🎤
         await message.answer(
             text="""<b>Salom! 🎉</b> 
 
-<b>Men [Bot nomi] botiman.</b> Sizga quyidagi funksiyalarni taqdim etaman:
+<b>Men Video to Audio botiman.</b> Sizga quyidagi funksiyalarni taqdim etaman:
 
 <b>/help</b> - Bot qanday ishlashini tushuntiruvchi yordam. 🤔
 <b>/about</b> - Bot haqidagi ma'lumot va yaratuvchilar haqida. 🛠️
@@ -175,7 +175,7 @@ async def kanalga_obuna(message: Message):
 
 @dp.message(Command("help"))
 async def help_commands(message: Message):
-    await message.answer("""<b>👋 Salom!</b> Men [Bot nomi] botiman. Sizga quyidagi funksiyalarni taqdim etaman:
+    await message.answer("""<b>👋 Salom!</b> Men Video to Audio botiman. Sizga quyidagi funksiyalarni taqdim etaman:
 
 <b>1. /start</b> - Botni ishga tushiradi va siz bilan salomlashadi. 🤖
 <b>2. /help</b> - Botning qanday ishlashini tushuntiruvchi yordam. 📚
@@ -195,7 +195,7 @@ async def help_commands(message: Message):
 async def about_commands(message: Message):
     await message.answer("""<b>📢 /about - Bot Haqida Ma'lumot</b>
 
-<b>👋 Salom! Men [Bot nomi] botiman.</b>
+<b>👋 Salom! Men Video to Audio botiman.</b>
 
 <b>Bot Yaratuvchilari:</b>
 - <b>Yaratuvchi:</b> Nurbek Uktamov
