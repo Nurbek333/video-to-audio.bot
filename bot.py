@@ -202,30 +202,34 @@ async def is_admin(message: Message):
     await message.answer(text="Admin menu", reply_markup=admin_keyboard.admin_button)
 
 @dp.message(F.text == "Foydalanuvchilar soni", IsBotAdminFilter(ADMINS))
-async def users_count(message: Message):
+async def users_count(message: types.Message):
     counts = db.count_users()
-    text = f"Botimizda {counts[0]} ta foydalanuvchi bor"
+    if counts:  # Make sure the query was successful
+        text = f"Botimizda {counts[0]} ta foydalanuvchi bor"
+    else:
+        text = "Foydalanuvchilar sonini olishda xatolik yuz berdi"
     await message.answer(text=text, parse_mode=ParseMode.HTML)
 
 @dp.message(F.text == "Reklama yuborish", IsBotAdminFilter(ADMINS))
-async def advert_dp(message: Message, state: FSMContext):
+async def advert_dp(message: types.Message, state: FSMContext):
     await state.set_state(Adverts.adverts)
     await message.answer(text="Reklama yuborishingiz mumkin!", parse_mode=ParseMode.HTML)
 
 @dp.message(Adverts.adverts)
-async def send_advert(message: Message, state: FSMContext):
+async def send_advert(message: types.Message, state: FSMContext):
     message_id = message.message_id
     from_chat_id = message.from_user.id
-    users = db.all_users_id()
+    users = db.all_users_id()  # Get all user IDs from the database
+
     count = 0
     for user in users:
         try:
             await bot.copy_message(chat_id=user[0], from_chat_id=from_chat_id, message_id=message_id)
             count += 1
         except Exception as e:
-            logging.exception(f"Foydalanuvchiga reklama yuborishda xatolik: {user[0]}", e)
-        time.sleep(0.01)
-    
+            logging.exception(f"Foydalanuvchiga reklama yuborishda xatolik: {user[0]}", exc_info=e)
+        time.sleep(0.01)  # Delay to avoid spamming the server too quickly
+
     await message.answer(f"Reklama {count} ta foydalanuvchiga yuborildi", parse_mode=ParseMode.HTML)
     await state.clear()
 
