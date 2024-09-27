@@ -23,7 +23,7 @@ import logging
 from aiogram.types import CallbackQuery, ContentType
 from filters.admin import IsBotAdminFilter,AdminStates
 from aiogram.fsm.state import State, StatesGroup
-
+from buttons import savol_button
 # Konfiguratsiya
 ADMINS = config.ADMINS
 TOKEN = config.BOT_TOKEN
@@ -77,15 +77,7 @@ async def handle_video(message: types.Message):
 
     # Add delay for processing
     initial_message = await message.reply("📥 Video yuklandi! Konvertatsiya jarayonini kuting...")
-    for i in range(3, 0, -1):
-        # Send countdown message
-        countdown_message = await message.reply(f"⏳ {i} sekunddan so'ng konvertatsiya boshlanadi...")
-        
-        # Wait 1 second
-        await asyncio.sleep(1)
-        
-        # Delete the previous countdown message
-        await countdown_message.delete()
+
     
     # Delete the initial message
     await initial_message.delete()
@@ -139,8 +131,8 @@ Video yuboring va men uni ovozli xabarga aylantiraman. 🎥➡️🎤
 <b>Bot SifatDev IT Akademiyasi tomonidan yaratilgan.</b> 🌟
 
 <b>Botni ishlatganingiz uchun rahmat!</b> 🎉""",
-            parse_mode="html"
-        )
+            parse_mode="html",
+        reply_markup=savol_button)
     except Exception as e:
         await message.answer(
             text="""<b>Salom! 🎉</b> 
@@ -159,8 +151,8 @@ Video yuboring va men uni ovozli xabarga aylantiraman. 🎥➡️🎤
 <b>Bot SifatDev IT Akademiyasi tomonidan yaratilgan.</b> 🌟
 
 <b>Botni ishlatganingiz uchun rahmat!</b> 🎉""",
-            parse_mode="html"
-        )
+            parse_mode="html",
+       reply_markup=savol_button )
 
 @dp.message(IsCheckSubChannels())
 async def kanalga_obuna(message: Message):
@@ -173,9 +165,10 @@ async def kanalga_obuna(message: Message):
     button = inline_channel.as_markup()
     await message.answer(f"{text} kanallarga a'zo bo'ling", reply_markup=button)
 
+
 @dp.message(Command("help"))
 async def help_commands(message: Message):
-    await message.answer("""<b>👋 Salom!</b> Men Video to Audio botiman. Sizga quyidagi funksiyalarni taqdim etaman:
+    await message.answer("""<b>👋 Salom!</b> Men Video to Audio botiman.. Sizga quyidagi funksiyalarni taqdim etaman:
 
 <b>1. /start</b> - Botni ishga tushiradi va siz bilan salomlashadi. 🤖
 <b>2. /help</b> - Botning qanday ishlashini tushuntiruvchi yordam. 📚
@@ -189,7 +182,7 @@ async def help_commands(message: Message):
 
 <b>Bot SifatDev IT Akademiyasiga tegishli. 🌟</b>
 
-<b>Rahmat, [Bot nomi]!</b>""", parse_mode="html")
+<b>Botdan foydalanganingizdan xursandmiz</b>""", parse_mode="html")
 
 @dp.message(Command("about"))
 async def about_commands(message: Message):
@@ -197,22 +190,44 @@ async def about_commands(message: Message):
 
 <b>👋 Salom! Men Video to Audio botiman.</b>
 
-<b>Bot Yaratuvchilari:</b>
-- <b>Yaratuvchi:</b> Nurbek Uktamov
-- <b>Tajriba:</b> Backend dasturchi, Django bo'yicha mutaxassis
-- <b>Maqsad:</b> Ushbu bot sizga matnni ovozga aylantirish va boshqa funktsiyalarni taqdim etish uchun yaratilgan.
-
 <b>Bot Haqida:</b>
-- <b>Maqsad:</b> [Bot nomi] bot sizning matnlaringizni ovozli xabarlarga aylantiradi. Har qanday matnni yuboring va men uni sizga ovozli xabar sifatida qaytaraman.
+- <b>Maqsad:</b> Video to Audio bot sizning matnlaringizni ovozli xabarlarga aylantiradi. Har qanday matnni yuboring va men uni sizga ovozli xabar sifatida qaytaraman.
 - <b>Texnologiyalar:</b> Bot Python dasturlash tili yordamida yaratildi va <b>aiogram</b> kutubxonasi, <b>gTTS</b> (Google Text-to-Speech) kabi texnologiyalarni ishlatadi.
 - <b>Qanday Ishlaydi:</b> Siz matn yuborganingizda, bot uni ovozga aylantiradi va ovozli xabar sifatida yuboradi.
 
-<b>Agar Qo'shimcha Ma'lumot yoki Yordam Kerak Bo'lsa:</b>
-- <b>Kontakt:</b> <b>nurbekuktamov@gmail.com 📧</b>
-- <b>Websayt:</b> <b>nurbek333.pythonanywhere.com 🌐</b>
-
 <b>Rahmat va botni ishlatganingiz uchun rahmat!</b> 🎉""", parse_mode='html')
     
+@dp.message(Command("admin"), IsBotAdminFilter(ADMINS))
+async def is_admin(message: Message):
+    await message.answer(text="Admin menu", reply_markup=admin_keyboard.admin_button)
+
+@dp.message(F.text == "Foydalanuvchilar soni", IsBotAdminFilter(ADMINS))
+async def users_count(message: Message):
+    counts = db.count_users()
+    text = f"Botimizda {counts[0]} ta foydalanuvchi bor"
+    await message.answer(text=text, parse_mode=ParseMode.HTML)
+
+@dp.message(F.text == "Reklama yuborish", IsBotAdminFilter(ADMINS))
+async def advert_dp(message: Message, state: FSMContext):
+    await state.set_state(Adverts.adverts)
+    await message.answer(text="Reklama yuborishingiz mumkin!", parse_mode=ParseMode.HTML)
+
+@dp.message(Adverts.adverts)
+async def send_advert(message: Message, state: FSMContext):
+    message_id = message.message_id
+    from_chat_id = message.from_user.id
+    users = db.all_users_id()
+    count = 0
+    for user in users:
+        try:
+            await bot.copy_message(chat_id=user[0], from_chat_id=from_chat_id, message_id=message_id)
+            count += 1
+        except Exception as e:
+            logging.exception(f"Foydalanuvchiga reklama yuborishda xatolik: {user[0]}", e)
+        time.sleep(0.01)
+    
+    await message.answer(f"Reklama {count} ta foydalanuvchiga yuborildi", parse_mode=ParseMode.HTML)
+    await state.clear()
 
 
 # Define the states for admin functionality
@@ -398,52 +413,6 @@ async def handle_admin_reply(message: Message, state: FSMContext):
     else:
         await message.reply("⚠️ Xatolik: Javob yuborish uchun foydalanuvchi ID topilmadi.")
 
-
-@dp.message(Command("admin"), IsBotAdminFilter(ADMINS))
-async def is_admin(message: Message):
-    await message.answer(text="Admin menu", reply_markup=admin_keyboard.admin_button)
-
-@dp.message(F.text == "Foydalanuvchilar soni", IsBotAdminFilter(ADMINS))
-async def users_count(message: Message):
-    counts = db.count_users()
-    text = f"Botimizda {counts[0]} ta foydalanuvchi bor"
-    await message.answer(text=text, parse_mode=ParseMode.HTML)
-
-@dp.message(F.text == "Reklama yuborish", IsBotAdminFilter(ADMINS))
-async def advert_dp(message: Message, state: FSMContext):
-    await state.set_state(Adverts.adverts)
-    await message.answer(text="Reklama yuborishingiz mumkin!", parse_mode=ParseMode.HTML)
-
-@dp.message(Adverts.adverts)
-async def send_advert(message: Message, state: FSMContext):
-    message_id = message.message_id
-    from_chat_id = message.from_user.id
-    users = db.all_users_id()
-    count = 0
-    for user in users:
-        try:
-            await bot.copy_message(chat_id=user[0], from_chat_id=from_chat_id, message_id=message_id)
-            count += 1
-        except Exception as e:
-            logging.exception(f"Foydalanuvchiga reklama yuborishda xatolik: {user[0]}", e)
-        time.sleep(0.01)
-    
-    await message.answer(f"Reklama {count} ta foydalanuvchiga yuborildi", parse_mode=ParseMode.HTML)
-    await state.clear()
-
-@dp.startup()
-async def on_startup_notify(bot: Bot):
-    for admin in ADMINS:
-        try:
-            await bot.send_message(
-                chat_id=int(admin),
-                text="<b>🔔 Bot muvaffaqiyatli ishga tushdi!</b>\n\n"
-                     "Bot endi to'liq faol va foydalanuvchilar bilan muloqotga tayyor. "
-                     "Agar biror bir muammo yuzaga kelsa, tezda xabar bering.",
-                parse_mode='html'
-            )
-        except Exception as err:
-            logging.exception(f"Admin {admin} uchun xabar yuborishda xatolik yuz berdi: {err}")
 
 # Bot ishdan to'xtaganda barcha adminlarni xabardor qilish
 @dp.shutdown()
